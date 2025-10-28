@@ -90,11 +90,33 @@ void handle_input(const std::string path, SingleMapper& sm, DoubleMapper& dm, Me
     LLOG(LL_INFO, "thread ending");
 }
 
+std::string get_grap_kbd(std::string device) {
+    std::string grab_kbd;
+    if (!device.empty()) {
+        grab_kbd = device;
+    } else {
+        std::vector<std::string> devices = get_kbd_devices();
+        if (devices.size() == 0) {
+            LLOG(LL_ERROR, "can't find out any key board device");
+        } else {
+            grab_kbd = devices[0];
+        }
+    }
+    return grab_kbd;
+}
+
 void new_thread_to_handle(std::string device, SingleMapper& sm, DoubleMapper& dm, MetaMapper& mm) {
-    std::string grab_kbd = device.empty() ? get_kbd_devices()[0] : device;
-    LLOG(LL_INFO, "new_thread, grab_kbd:%s", grab_kbd.c_str());
-    std::thread handle_thread(handle_input, grab_kbd, std::ref(sm), std::ref(dm), std::ref(mm));
-    handle_thread.detach();
+    std::string grab_kbd = get_grap_kbd(device);
+    LLOG(LL_INFO, "get_grab_kbd:%s", grab_kbd.c_str());
+
+    if (!grab_kbd.empty()) {
+        std::thread handle_thread(handle_input, grab_kbd, std::ref(sm), std::ref(dm), std::ref(mm));
+        handle_thread.detach();
+    }
+
+    // DOTO
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+
     std::thread watch_thread(watch_dev_input);
     watch_thread.detach();
 }
