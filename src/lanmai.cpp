@@ -1,6 +1,7 @@
 #include "args.h"
 #include "common.h"
 #include "config.h"
+#include "file_watch.h"
 #include "log.h"
 #include "mapper.h"
 #include <fcntl.h>
@@ -14,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -86,23 +88,44 @@ void handle_input(const std::string& path, SingleMapper sm, DoubleMapper dm, Met
     }
 }
 
+void do_handle(std::string device, SingleMapper& sm, DoubleMapper& dm, MetaMapper& mm) {
+    if (!device.empty()) {
+        handle_input(device, sm, dm, mm);
+        return;
+    }
+
+    auto devices = get_kbd_devices();
+    if (devices.size() != 0) {
+        for (auto&& d : devices) {
+            LLOG(LL_INFO, "keyboard device:%s", d.c_str());
+        }
+        handle_input(devices[0], sm, dm, mm);
+    }
+}
+
 int main(int argc, char* argv[]) {
     Args args(argc, argv);
     GLOBAL_LOG_LEVEL  = args.log_level;
     json cfg          = readConfig(args.config_path);
     auto [sm, dm, mm] = get_mappers(cfg);
-    if (!args.device.empty()) {
-        handle_input(args.device, sm, dm, mm);
-        return 0;
+
+    std::thread handle_thread(do_handle, args.device, std::ref(sm), std::ref(dm), std::ref(mm));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+
+    std::thread watch_thread(watch_dev_input);
+
+    while (1) {
+        if (have_new_device()) {
+            if (!handle_thread.joinable()) {
+                LLOG(LL_INFO, "Joinable is false!");
+            }
+            // TODO
+            handle_thread.detach();
+            handle_thread = std::thread(do_handle, args.device, std::ref(sm), std::ref(dm), std::ref(mm));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
-    auto devices = get_kbd_devices();
-    if (devices.size() == 0) {
-        LLOG(LL_ERROR, "can't find out any key board device");
-        return 1;
-    }
-    for (auto&& d : devices) {
-        LLOG(LL_INFO, "keyboard device:%s", d.c_str());
-    }
-    handle_input(devices[0], sm, dm, mm);
+
     return 0;
 }
