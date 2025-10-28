@@ -27,7 +27,8 @@ void send(const libevdev_uinput* uinput_dev, unsigned int type, unsigned int cod
 
 void send(const libevdev_uinput* uinput_dev, input_event e) { send(uinput_dev, e.type, e.code, e.value); }
 
-void handle_input(const std::string& path, SingleMapper sm, DoubleMapper dm, MetaMapper mm) {
+void handle_input(const std::string path, SingleMapper& sm, DoubleMapper& dm, MetaMapper& mm) {
+    LLOG(LL_INFO, "thread begin");
     int fd = open(path.c_str(), O_RDONLY);
     if (fd < 0) {
         LLOG(LL_ERROR, "open file:%s failed.", path.c_str());
@@ -86,21 +87,16 @@ void handle_input(const std::string& path, SingleMapper sm, DoubleMapper dm, Met
             }
         }
     }
+    LLOG(LL_INFO, "thread ending");
 }
 
-void do_handle(std::string device, SingleMapper& sm, DoubleMapper& dm, MetaMapper& mm) {
-    if (!device.empty()) {
-        handle_input(device, sm, dm, mm);
-        return;
-    }
-
-    auto devices = get_kbd_devices();
-    if (devices.size() != 0) {
-        for (auto&& d : devices) {
-            LLOG(LL_INFO, "keyboard device:%s", d.c_str());
-        }
-        handle_input(devices[0], sm, dm, mm);
-    }
+void new_thread_to_handle(std::string device, SingleMapper& sm, DoubleMapper& dm, MetaMapper& mm) {
+    std::string grab_kbd = device.empty() ? get_kbd_devices()[0] : device;
+    LLOG(LL_INFO, "new_thread, grab_kbd:%s", grab_kbd.c_str());
+    std::thread handle_thread(handle_input, grab_kbd, std::ref(sm), std::ref(dm), std::ref(mm));
+    handle_thread.detach();
+    std::thread watch_thread(watch_dev_input);
+    watch_thread.detach();
 }
 
 int main(int argc, char* argv[]) {
@@ -109,20 +105,12 @@ int main(int argc, char* argv[]) {
     json cfg          = readConfig(args.config_path);
     auto [sm, dm, mm] = get_mappers(cfg);
 
-    std::thread handle_thread(do_handle, args.device, std::ref(sm), std::ref(dm), std::ref(mm));
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-
-    std::thread watch_thread(watch_dev_input);
+    new_thread_to_handle(std::ref(args.device), std::ref(sm), std::ref(dm), std::ref(mm));
 
     while (1) {
         if (have_new_device()) {
-            if (!handle_thread.joinable()) {
-                LLOG(LL_INFO, "Joinable is false!");
-            }
-            // TODO
-            handle_thread.detach();
-            handle_thread = std::thread(do_handle, args.device, std::ref(sm), std::ref(dm), std::ref(mm));
+            LLOG(LL_INFO, "have a new input device!");
+            new_thread_to_handle(std::ref(args.device), std::ref(sm), std::ref(dm), std::ref(mm));
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
