@@ -9,11 +9,6 @@
 #include <libevdev/libevdev-uinput.h>
 #include <libevdev/libevdev.h>
 #include <libudev.h>
-#include <map>
-#include <set>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -113,12 +108,6 @@ void new_thread_to_handle(std::string device, SingleMapper& sm, DoubleMapper& dm
         std::thread handle_thread(handle_input, grab_kbd, std::ref(sm), std::ref(dm), std::ref(mm));
         handle_thread.detach();
     }
-
-    // DOTO
-    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-
-    std::thread watch_thread(watch_dev_input);
-    watch_thread.detach();
 }
 
 int main(int argc, char* argv[]) {
@@ -127,12 +116,15 @@ int main(int argc, char* argv[]) {
     json cfg          = readConfig(args.config_path);
     auto [sm, dm, mm] = get_mappers(cfg);
 
-    new_thread_to_handle(std::ref(args.device), std::ref(sm), std::ref(dm), std::ref(mm));
+    new_thread_to_handle(args.device, std::ref(sm), std::ref(dm), std::ref(mm));
+
+    std::thread watch_thread(watch_dev_input);
+    watch_thread.detach();
 
     while (1) {
         if (have_new_device()) {
             LLOG(LL_INFO, "have a new input device!");
-            new_thread_to_handle(std::ref(args.device), std::ref(sm), std::ref(dm), std::ref(mm));
+            new_thread_to_handle(args.device, std::ref(sm), std::ref(dm), std::ref(mm));
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
