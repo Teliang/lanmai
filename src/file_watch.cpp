@@ -1,60 +1,61 @@
-#include "file_watch.h"
+#include "common.h"
 #include "inotify.h"
 #include "log.h"
-#include <ctime>
+#include <fcntl.h>
+#include <libevdev/libevdev.h>
 #include <linux/limits.h>
+#include <string>
 #include <unistd.h>
 
-volatile time_t time_of_create_event = {0};
+bool is_phys_not_null(const char* path) {
+    int fd = open(path, O_RDWR | IN_CLOEXEC);
+    if (fd == -1) {
+        return false;
+    }
 
-// ignore first_create_event that will trigger by libudev when it grap kbd
-volatile bool ignore_first_create_event = true;
+    struct libevdev* dev = nullptr;
+    if (libevdev_new_from_fd(fd, &dev) == 0) {
+        const char* phys = libevdev_get_phys(dev);
+        libevdev_free(dev);
 
-void watch_directory(const char* path) {
-    int inotfd     = inotify_init();
-    int watch_desc = inotify_add_watch(inotfd, path, IN_CREATE);
+        LLOG(LL_INFO, "phys: %s", phys);
+        if (phys) {
+            return true;
+        }
+    }
+    close(fd);
+    return false;
+}
 
+void watch_directory(int inotfd, const char* path) {
+    int watch_desc              = inotify_add_watch(inotfd, path, IN_CREATE);
     size_t bufsiz               = sizeof(struct inotify_event) + PATH_MAX + 1;
     struct inotify_event* event = (inotify_event*)malloc(bufsiz);
+
+    Defer dev_defer{[&]() {
+        free(event);
+        inotify_rm_watch(inotfd, watch_desc);
+    }};
 
     while (1) {
         /* wait for an event to occur */
         read(inotfd, event, bufsiz);
+        LLOG(LL_INFO, "File %s be created", event->name);
 
-        LLOG(LL_INFO, "file create: %s", event->name);
+        std::string full_path = std::string(path) + event->name;
 
-        if (time_of_create_event) {
-            continue;
-        }
-
-        /* process event struct here */
-        if (ignore_first_create_event) {
-            ignore_first_create_event = false;
-        } else {
-            time_of_create_event = time(nullptr);
+        // ignore device that phys is null, which maybe create by libudev
+        if (is_phys_not_null(full_path.c_str())) {
+            break;
         }
     }
 }
 
-void watch_dev_input() {
-    LLOG(LL_INFO, "watch dev input begin.");
-    const char* path = "/dev/input/";
-    watch_directory(path);
-}
+int inotfd = inotify_init();
 
 bool have_new_device() {
-    if (time_of_create_event) {
-        time_t now;
-        time(&now);
-
-        double duration = difftime(now, time_of_create_event);
-        LLOG(LL_INFO, "Operation took %f seconds.", duration);
-        if (duration > 0.5) {
-            ignore_first_create_event = true;
-            time_of_create_event      = {0};
-            LLOG(LL_INFO, "Do something!");
-            return true;
-        }
-    }
-    return false;
+    LLOG(LL_INFO, "Watching dev input.");
+    const char* path = "/dev/input/";
+    watch_directory(inotfd, path);
+    return true;
 }

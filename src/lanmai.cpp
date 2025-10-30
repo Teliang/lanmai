@@ -4,6 +4,7 @@
 #include "file_watch.h"
 #include "log.h"
 #include "mapper.h"
+#include <atomic>
 #include <fcntl.h>
 #include <functional>
 #include <libevdev/libevdev-uinput.h>
@@ -12,6 +13,7 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 void send(const libevdev_uinput* uinput_dev, unsigned int type, unsigned int code, int value) {
@@ -22,7 +24,7 @@ void send(const libevdev_uinput* uinput_dev, unsigned int type, unsigned int cod
 
 void send(const libevdev_uinput* uinput_dev, input_event e) { send(uinput_dev, e.type, e.code, e.value); }
 
-void handle_input(const std::string path, SingleMapper& sm, DoubleMapper& dm, MetaMapper& mm) {
+void handle_input(const std::string path, SingleMapper sm, DoubleMapper dm, MetaMapper mm) {
     LLOG(LL_INFO, "thread begin");
     int fd = open(path.c_str(), O_RDONLY);
     if (fd < 0) {
@@ -38,6 +40,7 @@ void handle_input(const std::string path, SingleMapper& sm, DoubleMapper& dm, Me
         return;
     }
     sleep(1);
+
     Defer grab_defer{[&]() { libevdev_grab(dev, LIBEVDEV_UNGRAB); }};
     if (libevdev_grab(dev, LIBEVDEV_GRAB) < 0) {
         LLOG(LL_ERROR, "grab dev failed");
@@ -85,29 +88,37 @@ void handle_input(const std::string path, SingleMapper& sm, DoubleMapper& dm, Me
     LLOG(LL_INFO, "thread ending");
 }
 
-std::string get_grap_kbd(std::string device) {
-    std::string grab_kbd;
-    if (!device.empty()) {
-        grab_kbd = device;
-    } else {
-        std::vector<std::string> devices = get_kbd_devices();
-        if (devices.size() == 0) {
-            LLOG(LL_ERROR, "can't find out any key board device");
-        } else {
-            grab_kbd = devices[0];
+std::vector<std::string> get_grab_kbds(std::string conf_kbd) {
+    std::vector<std::string> grab_kbds = get_kbd_devices();
+    if (grab_kbds.size() == 0) {
+        LLOG(LL_ERROR, "can't find out any key board device");
+    }
+
+    if (!conf_kbd.empty()) {
+        if (std::find(grab_kbds.begin(), grab_kbds.end(), conf_kbd) == grab_kbds.end()) {
+            /* grab_kbds does not contain conf_kbd */
+            grab_kbds.push_back(conf_kbd);
         }
     }
-    return grab_kbd;
+
+    LLOG(LL_INFO, "get_grab_kbds size: %ld", grab_kbds.size());
+    for (auto&& kbd : grab_kbds) {
+        LLOG(LL_INFO, "kbd: %s", kbd.c_str());
+    }
+    return grab_kbds;
 }
 
-void new_thread_to_handle(std::string device, SingleMapper& sm, DoubleMapper& dm, MetaMapper& mm) {
-    std::string grab_kbd = get_grap_kbd(device);
-    LLOG(LL_INFO, "get_grab_kbd:%s", grab_kbd.c_str());
-
-    if (!grab_kbd.empty()) {
-        std::thread handle_thread(handle_input, grab_kbd, std::ref(sm), std::ref(dm), std::ref(mm));
-        handle_thread.detach();
+void worker(std::atomic<bool>* is_finished, const std::string path, SingleMapper sm, DoubleMapper dm, MetaMapper mm) {
+    try {
+        handle_input(path, sm, dm, mm);
+    } catch (const std::runtime_error& e) {
+        LLOG(LL_ERROR, "Caught std::runtime_error: %s", e.what());
+    } catch (...) { // Catch-all handler
+        LLOG(LL_ERROR, "Caught an unknown exception type.");
     }
+
+    is_finished->store(true);
+    LLOG(LL_INFO, "worker finished");
 }
 
 int main(int argc, char* argv[]) {
@@ -115,18 +126,53 @@ int main(int argc, char* argv[]) {
     GLOBAL_LOG_LEVEL  = args.log_level;
     json cfg          = readConfig(args.config_path);
     auto [sm, dm, mm] = get_mappers(cfg);
+    // Map of threads
+    std::map<std::string, std::tuple<std::thread, std::atomic<bool>*>> thread_map;
 
-    new_thread_to_handle(args.device, std::ref(sm), std::ref(dm), std::ref(mm));
+    std::vector<std::string> grab_kbds = get_grab_kbds(args.device);
 
-    std::thread watch_thread(watch_dev_input);
-    watch_thread.detach();
+    for (auto device : grab_kbds) {
+        LLOG(LL_INFO, "new_thread_to_handle for %s", device.c_str());
+        std::atomic<bool>* is_finished = new std::atomic<bool>(false);
+        thread_map.insert({device, std::pair{std::thread(worker, is_finished, device, sm, dm, mm), is_finished}});
+    }
 
     while (1) {
         if (have_new_device()) {
+            // can't get new device if thread don't sleep
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
             LLOG(LL_INFO, "have a new input device!");
-            new_thread_to_handle(args.device, std::ref(sm), std::ref(dm), std::ref(mm));
+
+            // remove terminated thread
+            for (auto it = thread_map.begin(); it != thread_map.end();) {
+                auto& value      = it->second;
+                auto is_finished = std::get<1>(value);
+                LLOG(LL_INFO, "%s's is_finished: %d", it->first.c_str(), is_finished->load());
+                if (is_finished->load()) {
+                    LLOG(LL_INFO, "%s's thread is terminated", it->first.c_str());
+                    delete is_finished;
+                    std::get<0>(value).join();
+                    it = thread_map.erase(it);
+                } else {
+                    it++;
+                }
+            }
+
+            // reget kbds
+            grab_kbds = get_grab_kbds(args.device);
+
+            // only handle new device
+            for (auto device : grab_kbds) {
+                if (thread_map.count(device)) {
+                    LLOG(LL_INFO, "%s's thread is still running", device.c_str());
+                } else {
+                    LLOG(LL_INFO, "new_thread_to_handle for %s", device.c_str());
+                    std::atomic<bool>* is_finished = new std::atomic<bool>(false);
+                    thread_map.insert(
+                        {device, std::pair{std::thread(worker, is_finished, device, sm, dm, mm), is_finished}});
+                }
+            }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
     return 0;

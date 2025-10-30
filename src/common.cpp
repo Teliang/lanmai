@@ -1,5 +1,6 @@
 #include "../lib/common.h"
 #include "../lib/log.h"
+#include <cstring>
 #include <fcntl.h>
 #include <functional>
 #include <libevdev/libevdev-uinput.h>
@@ -28,7 +29,11 @@ std::vector<std::string> get_devices(const char* dt) {
         path    = udev_list_entry_get_name(dev_list_entry);
         dev     = udev_device_new_from_syspath(udev, path);
         devnode = udev_device_get_devnode(dev);
-        if (devnode) {
+
+        // ignore virtual device which maybe create by libudev
+        const char* virtual_dev_prefix = "/sys/devices/virtual/";
+        LLOG(LL_INFO, "path: %s, devnode: %s", path, devnode);
+        if (devnode && strncmp(virtual_dev_prefix, path, strlen(virtual_dev_prefix))) {
             devnodes.push_back(std::string(devnode));
         }
         udev_device_unref(dev);
