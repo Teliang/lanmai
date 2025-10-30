@@ -52,7 +52,6 @@ sometimes mouse(or others) may register as a keyboard, so lanmai may grab it, yo
 
 # TODO
 ## P0
-+ real-time derives detecting and mapping
 + better logger
 
 ## P1

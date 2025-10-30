@@ -24,7 +24,7 @@ void send(const libevdev_uinput* uinput_dev, unsigned int type, unsigned int cod
 
 void send(const libevdev_uinput* uinput_dev, input_event e) { send(uinput_dev, e.type, e.code, e.value); }
 
-void handle_input(const std::string path, SingleMapper sm, DoubleMapper dm, MetaMapper mm) {
+void handle_input(const std::string path, SingleMapper& sm, DoubleMapper& dm, MetaMapper& mm) {
     LLOG(LL_INFO, "thread begin");
     int fd = open(path.c_str(), O_RDONLY);
     if (fd < 0) {
@@ -102,7 +102,7 @@ std::vector<std::string> get_grab_kbds(std::string conf_kbd) {
     }
 
     LLOG(LL_INFO, "get_grab_kbds size: %ld", grab_kbds.size());
-    for (auto&& kbd : grab_kbds) {
+    for (auto& kbd : grab_kbds) {
         LLOG(LL_INFO, "kbd: %s", kbd.c_str());
     }
     return grab_kbds;
@@ -131,7 +131,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<std::string> grab_kbds = get_grab_kbds(args.device);
 
-    for (auto device : grab_kbds) {
+    for (auto& device : grab_kbds) {
         LLOG(LL_INFO, "new_thread_to_handle for %s", device.c_str());
         std::atomic<bool>* is_finished = new std::atomic<bool>(false);
         thread_map.insert({device, std::pair{std::thread(worker, is_finished, device, sm, dm, mm), is_finished}});
@@ -162,7 +162,7 @@ int main(int argc, char* argv[]) {
             grab_kbds = get_grab_kbds(args.device);
 
             // only handle new device
-            for (auto device : grab_kbds) {
+            for (auto& device : grab_kbds) {
                 if (thread_map.count(device)) {
                     LLOG(LL_INFO, "%s's thread is still running", device.c_str());
                 } else {
