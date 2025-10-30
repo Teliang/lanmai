@@ -25,7 +25,6 @@ void send(const libevdev_uinput* uinput_dev, unsigned int type, unsigned int cod
 void send(const libevdev_uinput* uinput_dev, input_event e) { send(uinput_dev, e.type, e.code, e.value); }
 
 void handle_input(const std::string path, SingleMapper& sm, DoubleMapper& dm, MetaMapper& mm) {
-    LLOG(LL_INFO, "thread begin");
     int fd = open(path.c_str(), O_RDONLY);
     if (fd < 0) {
         LLOG(LL_ERROR, "open file:%s failed.", path.c_str());
@@ -85,7 +84,6 @@ void handle_input(const std::string path, SingleMapper& sm, DoubleMapper& dm, Me
             }
         }
     }
-    LLOG(LL_INFO, "thread ending");
 }
 
 std::vector<std::string> get_grab_kbds(std::string conf_kbd) {
@@ -109,6 +107,7 @@ std::vector<std::string> get_grab_kbds(std::string conf_kbd) {
 }
 
 void worker(std::atomic<bool>* is_finished, const std::string path, SingleMapper sm, DoubleMapper dm, MetaMapper mm) {
+    LLOG(LL_INFO, "worker %s begin", path.c_str());
     try {
         handle_input(path, sm, dm, mm);
     } catch (const std::runtime_error& e) {
@@ -132,7 +131,6 @@ int main(int argc, char* argv[]) {
     std::vector<std::string> grab_kbds = get_grab_kbds(args.device);
 
     for (auto& device : grab_kbds) {
-        LLOG(LL_INFO, "new_thread_to_handle for %s", device.c_str());
         std::atomic<bool>* is_finished = new std::atomic<bool>(false);
         thread_map.insert({device, std::pair{std::thread(worker, is_finished, device, sm, dm, mm), is_finished}});
     }
@@ -147,7 +145,6 @@ int main(int argc, char* argv[]) {
             for (auto it = thread_map.begin(); it != thread_map.end();) {
                 auto& value      = it->second;
                 auto is_finished = std::get<1>(value);
-                LLOG(LL_INFO, "%s's is_finished: %d", it->first.c_str(), is_finished->load());
                 if (is_finished->load()) {
                     LLOG(LL_INFO, "%s's thread is terminated", it->first.c_str());
                     delete is_finished;
@@ -163,10 +160,7 @@ int main(int argc, char* argv[]) {
 
             // only handle new device
             for (auto& device : grab_kbds) {
-                if (thread_map.count(device)) {
-                    LLOG(LL_INFO, "%s's thread is still running", device.c_str());
-                } else {
-                    LLOG(LL_INFO, "new_thread_to_handle for %s", device.c_str());
+                if (!thread_map.count(device)) {
                     std::atomic<bool>* is_finished = new std::atomic<bool>(false);
                     thread_map.insert(
                         {device, std::pair{std::thread(worker, is_finished, device, sm, dm, mm), is_finished}});

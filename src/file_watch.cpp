@@ -18,7 +18,7 @@ bool is_phys_not_null(const char* path) {
         const char* phys = libevdev_get_phys(dev);
         libevdev_free(dev);
 
-        LLOG(LL_INFO, "phys: %s", phys);
+        LLOG(LL_INFO, "device: %s , phys: %s", path, phys);
         if (phys) {
             return true;
         }
@@ -54,7 +54,7 @@ void watch_directory(int inotfd, const char* path) {
 int inotfd = inotify_init();
 
 bool have_new_device() {
-    LLOG(LL_INFO, "Watching dev input.");
+    LLOG(LL_INFO, "Watching /dev/input/");
     const char* path = "/dev/input/";
     watch_directory(inotfd, path);
     return true;
