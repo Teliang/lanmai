@@ -13,17 +13,17 @@ bool is_phys_not_null(const char* path) {
         return false;
     }
 
+    Defer fd_defer{[&]() { close(fd); }};
+
     struct libevdev* dev = nullptr;
+    Defer dev_defer{[&]() { libevdev_free(dev); }};
     if (libevdev_new_from_fd(fd, &dev) == 0) {
         const char* phys = libevdev_get_phys(dev);
-        libevdev_free(dev);
-
         LLOG(LL_INFO, "device: %s , phys: %s", path, phys);
         if (phys) {
             return true;
         }
     }
-    close(fd);
     return false;
 }
 
@@ -32,7 +32,7 @@ void watch_directory(int inotfd, const char* path) {
     size_t bufsiz               = sizeof(struct inotify_event) + PATH_MAX + 1;
     struct inotify_event* event = (inotify_event*)malloc(bufsiz);
 
-    Defer dev_defer{[&]() {
+    Defer free_defer{[&]() {
         free(event);
         inotify_rm_watch(inotfd, watch_desc);
     }};
