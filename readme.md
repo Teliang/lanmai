@@ -11,7 +11,7 @@ lanmai is a key mapping software on Linux.
 # dependencies
 + libevdev
 + libudev
-+ inotify-tools
++ inotify
 
 # build and install
 ```

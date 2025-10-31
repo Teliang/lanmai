@@ -1,10 +1,10 @@
 #include "common.h"
-#include "inotify.h"
 #include "log.h"
 #include <fcntl.h>
 #include <libevdev/libevdev.h>
 #include <linux/limits.h>
 #include <string>
+#include <sys/inotify.h>
 #include <unistd.h>
 
 bool is_phys_not_null(const char* path) {
