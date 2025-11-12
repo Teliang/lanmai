@@ -144,13 +144,12 @@ int main(int argc, char* argv[]) {
 
             // remove terminated thread
             std::erase_if(thread_map, [](auto& item) {
-                std::string key                                  = item.first;
-                std::pair<std::thread, std::atomic<bool>*>& pair = item.second;
-                std::atomic<bool>* is_finished                   = pair.second;
+                auto& [key, thread_bool_pair]  = item;
+                std::atomic<bool>* is_finished = thread_bool_pair.second;
                 if (is_finished->load()) {
                     LLOG(LL_INFO, "%s's thread is terminated", key.c_str());
                     delete is_finished;
-                    pair.first.join();
+                    thread_bool_pair.first.join();
                     return true;
                 }
                 return false;
