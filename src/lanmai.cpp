@@ -13,6 +13,7 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -126,12 +127,12 @@ int main(int argc, char* argv[]) {
     json cfg          = readConfig(args.config_path);
     auto [sm, dm, mm] = get_mappers(cfg);
     // Map of threads
-    std::map<std::string, std::tuple<std::thread, std::atomic<bool>*>> thread_map;
+    std::unordered_map<std::string, std::pair<std::thread, std::atomic<bool>*>> thread_map;
 
     std::vector<std::string> grab_kbds = get_grab_kbds(args.device);
 
     for (auto& device : grab_kbds) {
-        std::atomic<bool>* is_finished = new std::atomic<bool>(false);
+        auto is_finished = new std::atomic<bool>(false);
         thread_map.insert({device, std::pair{std::thread(worker, is_finished, device, sm, dm, mm), is_finished}});
     }
 
@@ -142,18 +143,18 @@ int main(int argc, char* argv[]) {
             LLOG(LL_INFO, "have a new input device!");
 
             // remove terminated thread
-            for (auto it = thread_map.begin(); it != thread_map.end();) {
-                auto& value      = it->second;
-                auto is_finished = std::get<1>(value);
+            std::erase_if(thread_map, [](auto& item) {
+                std::string key                                  = item.first;
+                std::pair<std::thread, std::atomic<bool>*>& pair = item.second;
+                std::atomic<bool>* is_finished                   = pair.second;
                 if (is_finished->load()) {
-                    LLOG(LL_INFO, "%s's thread is terminated", it->first.c_str());
+                    LLOG(LL_INFO, "%s's thread is terminated", key.c_str());
                     delete is_finished;
-                    std::get<0>(value).join();
-                    it = thread_map.erase(it);
-                } else {
-                    it++;
+                    pair.first.join();
+                    return true;
                 }
-            }
+                return false;
+            });
 
             // reget kbds
             grab_kbds = get_grab_kbds(args.device);
@@ -161,7 +162,7 @@ int main(int argc, char* argv[]) {
             // only handle new device
             for (auto& device : grab_kbds) {
                 if (!thread_map.count(device)) {
-                    std::atomic<bool>* is_finished = new std::atomic<bool>(false);
+                    auto is_finished = new std::atomic<bool>(false);
                     thread_map.insert(
                         {device, std::pair{std::thread(worker, is_finished, device, sm, dm, mm), is_finished}});
                 }
