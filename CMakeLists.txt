@@ -7,8 +7,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 file(GLOB LANMAI_CPPFILES src/*.cpp)
 add_executable(lanmai ${LANMAI_CPPFILES})
 
-target_include_directories(lanmai PUBLIC ./lib /usr/include/libevdev-1.0)
-target_link_libraries(lanmai PUBLIC udev evdev)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBEVDEV REQUIRED libevdev)
+
+target_include_directories(lanmai PUBLIC ./lib ${LIBEVDEV_INCLUDE_DIRS})
+target_link_libraries(lanmai PUBLIC udev evdev ${LIBEVDEV_LIBRARIES})
 
 install(TARGETS lanmai DESTINATION /usr/bin)
 install(CODE 

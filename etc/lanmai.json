@@ -13,6 +13,18 @@
             "click": "ESC",
             "press": "LEFTCTRL"
         },
+        "RIGHTSHIFT-AS-BACKSLASH": {
+            "enable": false,
+            "type": "single",
+            "from": "RIGHTSHIFT",
+            "to": "RO"
+        },
+        "INSERT-AS-YEN": {
+            "enable": false,
+            "type": "single",
+            "from": "INSERT",
+            "to": "YEN"
+        },
         "SpaceFn": {
             "enable": false,
             "type": "meta",
