@@ -13,7 +13,7 @@ pkg_check_modules(LIBEVDEV REQUIRED libevdev)
 target_include_directories(lanmai PUBLIC ./lib ${LIBEVDEV_INCLUDE_DIRS})
 target_link_libraries(lanmai PUBLIC udev evdev ${LIBEVDEV_LIBRARIES})
 
-install(TARGETS lanmai DESTINATION /usr/bin)
+install(TARGETS lanmai DESTINATION bin)
 install(CODE 
     "IF(NOT EXISTS /etc/lanmai.json)
     file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/etc/lanmai.json DESTINATION /etc)
