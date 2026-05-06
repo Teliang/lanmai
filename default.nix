@@ -1,20 +1,10 @@
+let
+  nixpkgs = fetchTarball "https://github.com/NixOS/nixpkgs/tarball/nixos-25.11";
+  pkgs = import nixpkgs {
+    config = { };
+    overlays = [ ];
+  };
+in
 {
-  pkgs ? import <nixpkgs> { },
-}:
-
-pkgs.stdenv.mkDerivation {
-  pname = "lanmai";
-  version = "1.0.0";
-  src = ./.;
-
-  nativeBuildInputs = [
-    pkgs.cmake
-    pkgs.pkg-config
-  ];
-
-  buildInputs = [
-    # dependencies
-    pkgs.libevdev
-    pkgs.udev
-  ];
+  lanmai = pkgs.callPackage ./lanmai.nix { };
 }
