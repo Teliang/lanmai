@@ -39,13 +39,15 @@ pkgs.stdenv.mkDerivation {
   ];
 
   installPhase = ''
+    runHook preInstall
     mkdir -p $out/bin
     cp lanmai $out/bin
     runHook postInstall
   '';
 
-  postinstall = ''
+  postInstall = ''
     mkdir -p $out/lib/systemd/system
-    substitute ./etc/lanmai.service $out/lib/systemd/system/lanmai.service
+    substitute ../etc/lanmai.service $out/lib/systemd/system/lanmai.service \
+    --replace /usr $out
   '';
 }
